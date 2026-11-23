@@ -1,0 +1,7 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Local tooling state
+.openchamber/
+node_modules/
