@@ -5,3 +5,6 @@ Thumbs.db
 # Local tooling state
 .openchamber/
 node_modules/
+
+# Review captures from tools/shot.mjs
+shots/
