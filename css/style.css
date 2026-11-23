@@ -160,9 +160,12 @@ body { position: fixed; inset: 0; }
 }
 .panel.collapsed .panel-toggle svg { transform: rotate(180deg); }
 .panel.collapsed .panel-body { display: none; }
+.panel.collapsed .actions { display: none; }
+.panel.collapsed .panel-foot { display: none; }
 .panel:not(.collapsed) .panel-toggle { border-bottom-color: var(--line); }
 
 .panel-body {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -173,7 +176,7 @@ body { position: fixed; inset: 0; }
 .panel-body::-webkit-scrollbar-thumb { background: rgba(124, 240, 180, 0.22); border-radius: 3px; }
 
 .readout {
-  padding: 14px 16px 15px;
+  padding: 12px 16px 13px;
   border-bottom: 1px solid var(--line);
 }
 .readout-row {
@@ -216,10 +219,17 @@ body { position: fixed; inset: 0; }
   letter-spacing: 0.24em;
   color: var(--faint);
 }
+.readout-note {
+  margin: 10px 0 0;
+  font-size: 8.5px;
+  line-height: 1.55;
+  letter-spacing: 0.015em;
+  color: var(--faint);
+}
 
-.controls { padding: 14px 16px 6px; }
+.controls { padding: 12px 16px 3px; }
 
-.slider { display: block; margin-bottom: 15px; }
+.slider { display: block; margin-bottom: 12px; }
 .slider-head {
   display: flex;
   justify-content: space-between;
@@ -283,7 +293,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.25); }
 input[type="range"]:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
 
 .actions {
-  padding: 10px 16px 14px;
+  flex: 0 0 auto;
+  padding: 9px 16px 12px;
   border-top: 1px solid var(--line);
 }
 .btn {
@@ -457,9 +468,9 @@ body.ui-hidden .hint { transform: translateX(-50%) translateY(4px); }
 .unsupported p { max-width: 420px; color: var(--dim); font-size: 13px; line-height: 1.6; }
 
 /* ---------- responsive ---------- */
-/* Short desktop windows: tighten the panel so the actions stay reachable
-   without scrolling.  Below this height the body scrolls instead. */
-@media (max-height: 700px) and (min-width: 721px) {
+/* Short desktop windows: tighten the panel so the whole control set is
+   visible.  Below this height the body scrolls while the actions stay pinned. */
+@media (max-height: 820px) and (min-width: 721px) {
   .panel { top: 14px; right: 14px; max-height: calc(100vh - 28px); }
   .panel-toggle { padding: 10px 16px; }
   .readout { padding: 10px 16px 11px; }
@@ -497,6 +508,15 @@ body.ui-hidden .hint { transform: translateX(-50%) translateY(4px); }
 @media (max-width: 400px) {
   .masthead h1 { font-size: 20px; letter-spacing: 0.14em; }
   .masthead .eyebrow { font-size: 8px; }
+}
+
+@media (pointer: coarse) {
+  .btn { padding: 12px 10px; }
+  .btn-primary { padding: 13px; }
+  input[type="range"] { height: 26px; }
+  .switch-row input { width: 32px; height: 18px; }
+  .switch-row input::after { width: 14px; height: 14px; }
+  .switch-row input:checked::after { transform: translateX(14px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

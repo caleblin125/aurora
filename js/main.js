@@ -22,6 +22,9 @@
     const config = Aurora.Config;
 
     const params = Object.assign({}, config.defaults);
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      params.autoCamera = false;
+    }
     const weather = new Aurora.SpaceWeather();
     const camera = new Aurora.Camera(canvas);
 
@@ -47,6 +50,7 @@
 
     let renderer;
     let ui;
+    let contextLost = false;
     const state = {
       params,
       steps,
@@ -77,6 +81,18 @@
 
       renderer.resize();
       renderer.setAuroraScale(scale);
+
+      /* A lost context leaves every GL object invalid; show a clear recovery
+         path instead of letting the frame loop throw every frame. */
+      canvas.addEventListener("webglcontextlost", (e) => {
+        e.preventDefault();
+        contextLost = true;
+        const el = $("context-lost");
+        if (el) el.hidden = false;
+      });
+      canvas.addEventListener("webglcontextrestored", () => location.reload());
+      const reload = $("btn-reload");
+      if (reload) reload.addEventListener("click", () => location.reload());
 
       ui = new Aurora.UI(params, {
         substorm: () => weather.trigger(),
@@ -141,7 +157,6 @@
       tick(now);
       started = true;
       ui.hideLoading();
-      setTimeout(() => weather.trigger(), 26000);
       requestAnimationFrame(onRaf);
     }
 
@@ -201,6 +216,7 @@
     let last = performance.now();
 
     function tick(now) {
+      if (contextLost) return;
       const raw = (now - last) / 1000;
       last = now;
       const dt = Math.min(0.06, Math.max(0.0001, raw));
@@ -210,7 +226,7 @@
       state.realTime += dt;
 
       weather.update(simDt);
-      state.visual = weather.visual(simDt);
+      state.visual = weather.visual();
 
       camera.update(dt, state.realTime);
       state.basis = camera.basis(renderer.width / Math.max(1, renderer.height));

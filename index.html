@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>Aurora Borealis — Real-time Simulation</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23060d10'/%3E%3Cpath d='M5 24c5-2 7-13 11-13s6 11 11 13' fill='none' stroke='%237cf0b4' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="css/style.css?v=64" />
+  <link rel="stylesheet" href="css/style.css?v=96" />
 </head>
 <body>
   <canvas id="stage" aria-label="Real-time aurora borealis simulation"></canvas>
@@ -51,53 +51,54 @@
           <div class="activity-bar"><i id="activity-fill"></i></div>
           <span id="activity-label">GEOMAGNETIC ACTIVITY</span>
         </div>
+        <p class="readout-note">Modelled solar-wind proxies and a stylised substorm cycle. Not live magnetometer or satellite data.</p>
       </section>
 
       <section class="controls" aria-label="Aurora parameters">
-        <label class="slider">
+        <label class="slider" title="Overall emission multiplier for the curtain layers">
           <span class="slider-head"><span>Aurora intensity</span><output id="out-intensity">1.00</output></span>
           <input id="in-intensity" type="range" min="0" max="2" step="0.01" value="1" />
         </label>
-        <label class="slider">
+        <label class="slider" title="Amplitude and contrast of folds and fine filaments">
           <span class="slider-head"><span>Turbulence</span><output id="out-turbulence">1.00</output></span>
           <input id="in-turbulence" type="range" min="0.2" max="2" step="0.01" value="1" />
         </label>
-        <label class="slider">
+        <label class="slider" title="Sheet opacity, self-absorption and the number of active layers">
           <span class="slider-head"><span>Curtain density</span><output id="out-density">0.65</output></span>
           <input id="in-density" type="range" min="0.15" max="1" step="0.01" value="0.65" />
         </label>
-        <label class="slider">
+        <label class="slider" title="Shifts the oxygen green / nitrogen blue / oxygen red emission layers up or down">
           <span class="slider-head"><span>Emission altitude</span><output id="out-color">0.38</output></span>
           <input id="in-color" type="range" min="0" max="1" step="0.01" value="0.38" />
         </label>
-        <label class="slider">
+        <label class="slider" title="Space-weather clock and curtain flow rate">
           <span class="slider-head"><span>Simulation speed</span><output id="out-speed">1.00×</output></span>
           <input id="in-speed" type="range" min="0" max="3" step="0.01" value="1" />
         </label>
-        <label class="slider">
+        <label class="slider" title="Filmic exposure applied before tone mapping">
           <span class="slider-head"><span>Exposure</span><output id="out-exposure">1.00</output></span>
           <input id="in-exposure" type="range" min="0.4" max="2.2" step="0.01" value="1" />
         </label>
       </section>
-
-      <section class="actions">
-        <button class="btn btn-primary" id="btn-substorm">
-          <span class="btn-dot"></span><span id="btn-substorm-label">Trigger substorm</span>
-        </button>
-        <div class="btn-row">
-          <button class="btn" id="btn-pause" aria-pressed="false">Pause</button>
-          <button class="btn" id="btn-camera" aria-pressed="true">Auto camera</button>
-        </div>
-        <div class="btn-row">
-          <button class="btn" id="btn-reset">Reset view</button>
-          <button class="btn" id="btn-quality" title="Cycle rendering quality">Quality: high</button>
-        </div>
-        <label class="switch-row">
-          <span>Adaptive resolution</span>
-          <input id="in-auto-quality" type="checkbox" checked />
-        </label>
-      </section>
     </div>
+
+    <section class="actions" aria-label="Simulation actions">
+      <button class="btn btn-primary" id="btn-substorm" title="Start a growth phase, or add a surge to a running substorm (S)">
+        <span class="btn-dot"></span><span id="btn-substorm-label">Trigger substorm</span>
+      </button>
+      <div class="btn-row">
+        <button class="btn" id="btn-pause" aria-pressed="false" title="Freeze simulation time (Space)">Pause</button>
+        <button class="btn" id="btn-camera" aria-pressed="true" title="Slow cinematic camera drift">Auto camera</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="btn-reset" title="Return to the default framing (R)">Reset view</button>
+        <button class="btn" id="btn-quality" title="Cycle rendering quality (Q)">Quality: high</button>
+      </div>
+      <label class="switch-row" title="Lower resolution and detail when the frame rate drops, then restore it">
+        <span>Adaptive resolution</span>
+        <input id="in-auto-quality" type="checkbox" checked />
+      </label>
+    </section>
 
     <footer class="panel-foot">
       <span id="fps-label">— FPS</span>
@@ -120,6 +121,12 @@
     <p>This simulation needs WebGL 2. Try a recent version of Chrome, Edge, Firefox or Safari with hardware acceleration enabled.</p>
   </div>
 
+  <div class="unsupported" id="context-lost" hidden>
+    <h2>Graphics context lost</h2>
+    <p>The browser reclaimed the WebGL context for this page. Reload to restart the simulation.</p>
+    <button class="btn" id="btn-reload" style="margin-top:14px">Reload</button>
+  </div>
+
   <script>
     window.addEventListener("error", function (e) {
       var el = document.getElementById("loading");
@@ -131,17 +138,17 @@
       }
     });
   </script>
-  <script src="js/config.js?v=64"></script>
-  <script src="js/noise.js?v=64"></script>
-  <script src="js/physics.js?v=64"></script>
-  <script src="js/camera.js?v=64"></script>
-  <script src="js/gl.js?v=64"></script>
-  <script src="js/shaders/common.js?v=64"></script>
-  <script src="js/shaders/aurora.js?v=64"></script>
-  <script src="js/shaders/scene.js?v=64"></script>
-  <script src="js/shaders/post.js?v=64"></script>
-  <script src="js/renderer.js?v=64"></script>
-  <script src="js/ui.js?v=64"></script>
-  <script src="js/main.js?v=64"></script>
+  <script src="js/config.js?v=96"></script>
+  <script src="js/noise.js?v=96"></script>
+  <script src="js/physics.js?v=96"></script>
+  <script src="js/camera.js?v=96"></script>
+  <script src="js/gl.js?v=96"></script>
+  <script src="js/shaders/common.js?v=96"></script>
+  <script src="js/shaders/aurora.js?v=96"></script>
+  <script src="js/shaders/scene.js?v=96"></script>
+  <script src="js/shaders/post.js?v=96"></script>
+  <script src="js/renderer.js?v=96"></script>
+  <script src="js/ui.js?v=96"></script>
+  <script src="js/main.js?v=96"></script>
 </body>
 </html>

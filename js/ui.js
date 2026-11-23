@@ -16,6 +16,7 @@
       this.interacted = false;
       this._buildSliders();
       this._bindButtons();
+      this._syncButtons();
       this._bindKeyboard();
       this._bindPanel();
       this._fadeTimer = setTimeout(() => this._fadeHint(), 14000);
@@ -82,6 +83,14 @@
         p.autoQuality = e.target.checked;
         this.cb.setAutoQuality(p.autoQuality);
       });
+    }
+
+    _syncButtons() {
+      const p = this.params;
+      $("btn-pause").setAttribute("aria-pressed", String(p.paused));
+      $("btn-pause").textContent = p.paused ? "Resume" : "Pause";
+      $("btn-camera").setAttribute("aria-pressed", String(p.autoCamera));
+      $("in-auto-quality").checked = p.autoQuality;
     }
 
     _bindPanel() {
