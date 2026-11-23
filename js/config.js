@@ -23,18 +23,19 @@
     /* Aurora volume bounds in world kilometres. The camera sits at the
        origin; curtains occupy roughly 12–55 degrees of elevation. */
     world: {
-      baseAlt: 82.0,       // lower edge of green oxygen emission
-      topAlt: 252.0,       // red oxygen / upper fringes
-      nearZ: 300.0,        // nearest volume slice
-      farZ: 900.0,         // farthest slice (fades into haze)
+      baseAlt: 82.0,        // lower edge of green oxygen emission
+      topAlt: 252.0,        // nominal top of the bright green/red column
+      slabTop: 500.0,       // highest modelled red emission (faint sheet tops)
+      nearZ: 300.0,         // nearest volume slice
+      farZ: 940.0,          // farthest slice (fades into haze)
       halfWidth: 1700.0,
-      curtainBaseZ: 430.0, // first curtain sheet depth
-      curtainSpacing: 125.0, // depth gap between overlapping sheets
+      curtainBaseZ: 430.0,  // first curtain sheet depth
+      curtainSpacing: 150.0, // depth gap between overlapping sheets
     },
 
     /* Rendering quality tiers.
-       auroraScale = aurora raymarch buffer size relative to the canvas.
-       steps       = max raymarch samples per pixel.
+       auroraScale = aurora buffer size relative to the canvas.
+       steps       = detail level: folds, ray octaves and sheet width.
        The aurora is soft, so it survives a low-res buffer and a bloom pass. */
     quality: {
       low:    { label: "Low",    auroraScale: 0.34, maxScale: 0.48, steps: 34 },
@@ -55,7 +56,7 @@
     /* Camera defaults. Pitch is elevation above the horizon. */
     camera: {
       yaw: 0.0,
-      pitch: 0.215,
+      pitch: 0.30,
       fov: 61 * Math.PI / 180,
       minFov: 32 * Math.PI / 180,
       maxFov: 82 * Math.PI / 180,

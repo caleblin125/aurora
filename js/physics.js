@@ -24,17 +24,23 @@
       this.kp = 2.5;
       this.coupling = 0.3;
       this.base = 0.24;
-      this.activity = 0.3;
+      this.activity = 0.3;      // fast emission signal (green)
+      this.activitySlow = 0.3;  // slow emission signal (red O(1D))
+      this.energy = 0.25;       // precipitation hardness proxy (N2/N2+)
+      this.stored = 0;          // magnetospheric energy available for onset
       this.env = 0;
       this.surge = 0;
       this.phase = PHASE_IDLE;
       this.phaseT = 0;
       this.duration = 0;
-      this.cooldown = 38;
+      this.cooldown = 10;
       this.auto = true;
       this.boost = 0;
-      this.nextAuto = 42 + Math.random() * 30;
-      this._out = { activity: 0.3, surge: 0, speed: 1 };
+      this.nextAuto = 24 + Math.random() * 8;
+      this._out = {
+        activity: 0.3, activitySlow: 0.3, energy: 0.25,
+        surge: 0, speed: 1, flow: 0.85,
+      };
     }
 
     trigger() {
@@ -71,8 +77,9 @@
         this._enter(PHASE_RECOVERY, 22 + Math.random() * 16);
       } else if (this.phase === PHASE_RECOVERY) {
         this._enter(PHASE_IDLE, 0);
-        this.cooldown = 22 + Math.random() * 26;
-        this.nextAuto = this.t + 45 + Math.random() * 70;
+        this.cooldown = 10 + Math.random() * 12;
+        // Later substorms are spaced so the quiet sky gets time to read.
+        this.nextAuto = this.t + 42 + Math.random() * 30;
         this.boost = 0;
       }
     }
@@ -127,15 +134,34 @@
         const p = Math.min(1, this.phaseT / Math.max(0.001, this.duration));
         env = 0.65 * (1 - p) * (1 - p);
       }
-      this.env += (env - this.env) * Math.min(1, dt * 2.2);
+      this.env += (env - this.env) * (1 - Math.exp(-dt / 0.55));
       this.surge = this.env * (0.8 + 0.2 * Math.sin(t * 0.9 + 1.3));
 
-      this.base = 0.22 + 0.52 * this.coupling;
-      this.activity = Math.min(1, this.base + this.env * 0.66 + this.boost);
-      this.kp = Math.min(9, 0.8 + this.activity * 7.4);
+      /* Stored magnetospheric energy: the system loads while the solar wind
+         couples and expends the store during expansion and recovery.  This is
+         an ordered proxy, not an absolute energy budget. */
+      if (this.phase === PHASE_IDLE || this.phase === PHASE_GROWTH) {
+        this.stored = Math.min(1, this.stored + dt * (0.010 + 0.070 * this.coupling));
+      } else {
+        this.stored = Math.max(0, this.stored - dt * (0.035 + 0.20 * this.env));
+      }
 
-      const target = this.base + this.env * 0.62 + this.boost;
-      this.activity += (target - this.activity) * 0.08;
+      this.base = 0.22 + 0.52 * this.coupling;
+      const target = Math.min(1, this.base + this.env * 0.66 + this.boost);
+      this.activity += (target - this.activity) * (1 - Math.exp(-dt / 0.8));
+      this.activitySlow += (target - this.activitySlow) * (1 - Math.exp(-dt / 9.0));
+
+      /* Precipitation hardness proxy.  The expansion phase carries the
+         hardest spectra, which is what brightens the nitrogen bands at the
+         curtain base. */
+      const energyTarget = Math.min(
+        1,
+        0.10 + 0.52 * this.activity + 0.22 * this.coupling +
+        0.30 * this.env * (0.45 + 0.55 * this.stored)
+      );
+      this.energy += (energyTarget - this.energy) * (1 - Math.exp(-dt / 3.0));
+
+      this.kp = Math.min(9, 0.8 + this.activity * 7.4);
     }
 
     label() {
@@ -143,12 +169,15 @@
     }
 
     /** Reused view object, read every frame by the renderer/UI. */
-    visual(dt) {
+    visual() {
       const speed = 0.72 + this.activity * 0.55 + this.env * 0.55;
       const o = this._out;
       o.activity = this.activity;
+      o.activitySlow = this.activitySlow;
+      o.energy = this.energy;
       o.surge = this.surge;
       o.speed = speed;
+      o.flow = 0.70 + this.activity * 0.55 + this.env * 0.30;
       return o;
     }
   }
