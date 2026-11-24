@@ -62,13 +62,18 @@ substorm onset ──► particle precipitation ──► atmospheric emission
     slightly to suggest the expanding oval.
 - **Background colours** follow the dominant auroral lines: 557.7 nm oxygen
   green through the body of the curtain, 630.0 nm oxygen red in the high,
-  diffuse top, and N2 / N2+ blue-violet where harder precipitation reaches the
-  lower border. The red layer is intentionally less ray-structured than the
-  green, because it comes from a higher and more uniform emission altitude.
+  diffuse top, and N2 / N2+ blue-violet confined to the base of the column,
+  where harder precipitation actually reaches. The red layer is intentionally
+  less ray-structured than the green, because it comes from a higher and more
+  uniform emission altitude.
 - **Geometry**: up to four near-vertical, east–west aligned sheets between
   roughly 82 and 500 km altitude. Their lower edges form the bright arcs; folds,
   altitude-dependent meanders and a magnetic-field-like lean make them read as
   curtains rather than flat walls.
+- **Arc scale**: the whole stack shares one gap pattern, so the curtain breaks
+  into discrete arcs with darker gaps instead of averaging back into a
+  continuous wall. The gaps deepen as geomagnetic activity rises and the sheet
+  heights differ from arc to arc, so the upper edge undulates.
 
 The result is physically ordered, but it is an artistic model, not a forecast,
 a magnetohydrodynamic simulation or a radiative-transfer solution.
@@ -116,6 +121,32 @@ solves for the ray's intersection with each sheet:
 A second, much wider Gaussian is composited as an optically thin luminous halo
 around each sheet. It supplies the diffuse glow that the unresolved part of a
 real curtain produces, without another render pass.
+
+### Arc-scale organisation
+
+Without organisation the stack reads as one continuous wall: four sheets each
+fill the frame, and any per-sheet gap is covered by the sheet behind it.
+
+- A gap field `bands` is sampled at `rd.x · uBaseZ`, on one reference plane
+  instead of at each sheet's own depth. All sheets therefore break at the same
+  screen position, and the arc stays coherent when the camera turns.
+- Two slow sines with wavelengths of roughly 280 km and 120 km give a handful
+  of arcs across the view. (Sampling in the sheet's world coordinates with a
+  longer wavelength put half a cycle across the whole frame, which reads as a
+  single dark third rather than as arcs.)
+- The gap floor rises from 0.62 in quiet conditions to 0.20 at high activity:
+  quiet arcs are broad and fairly uniform, and activity is what splits the oval
+  into discrete arcs. The arc height varies with the same field, so the bright
+  bands are taller and the gaps shorter.
+- Each sheet also fades in and out over several minutes (`vis`, 0.62–1.0), which
+  keeps the stack changing without adding layers.
+- A slow wave travelling along the arc (`w3`, ~1.4·10⁻³ rad/km) makes
+  neighbouring filaments move together, instead of each one breathing in place.
+
+The lower border is drawn as an edge rather than a fade: emission rises over
+about 8 km, a narrow broken rim of extra density sits just above the base, and
+the halo no longer bleeds below the sheet base. The rim reuses the arc, ray and
+envelope masks, so the sharper base costs no additional noise fetches.
 
 Because each sheet is integrated analytically, the image is essentially free of
 step aliasing. The quality setting therefore controls detail (`uSteps`, which
@@ -257,6 +288,10 @@ Notable constants and derived quantities inside the shader:
   edges so the arc sweeps up in the middle.
 - `lean = v·(16 + 15·noise)` km — height-dependent tilt of the field lines.
 - Base ray frequency `0.024`, optional fine octave at `0.082`.
+- `bands` — shared arc-gap field (wavelengths ≈ 280 and 120 km), sampled on the
+  reference plane; `gapFloor = mix(0.62, 0.20, activity)` is how far a gap
+  darkens the sheet.
+- `w3 = x·0.00145 − t·0.0035·flow` — the slow wave travelling along each arc.
 - `emission()` holds the 557.7 / 630.0 / N2 / N2+ weights and the altitude
   profiles; it is not a spectral render.
 
@@ -279,6 +314,34 @@ and bloom weights are in `js/config.js`.
 - The lake reflection adds three texture fetches in the scene pass (aurora plus
   the two bloom scales), not a second aurora render.
 
+### Measured frame cost
+
+`tools/bench.mjs` renders the pipeline directly and waits on each frame (a
+1×1 `readPixels` acts as a fence), so the numbers below exclude weather,
+camera and DOM work but include the full-res scene composite, bloom and the
+synchronisation wait. Headless Chrome runs on SwiftShader, so the absolute
+values are a proxy only; use them to compare builds at the same size and tier.
+
+| Build / tier | Median | Notes |
+|---|---|---|
+| high, 1258×702, 2 layers | 432 ms | → ~56 ms per extra layer |
+| high, 1258×702, 4 layers | 545 ms | default density |
+| low, 0.34 scale | 368 ms | |
+| high, 0.58 scale | 540 ms | |
+| ultra, 0.72 scale | 665 ms | |
+
+The scene composite at full canvas resolution plus the fence is roughly 310 ms
+of that, so the aurora pass itself is about 230 ms at the high tier here.
+Halving the layer count saves about 21 % of the frame; one layer is worth about
+10 %. That is what the 2–4 layer range from the density slider buys, and why
+adaptive quality lowers resolution before it touches the layer count.
+
+A build that skipped the third convergence iteration on the high tier landed
+inside run-to-run noise (545 ms vs 641 ms medians over 30 frames, with a ±15 %
+spread), so it was reverted: no reproducible gain, and the extra iteration
+keeps the steep folds placed correctly. The same applies to dropping the fine
+ray octave; the real lever is the buffer scale, which the tiers already set.
+
 ## Files
 
 ```
@@ -297,6 +360,7 @@ js/renderer.js          render pipeline and target management
 js/ui.js                DOM controls and keyboard shortcuts
 js/main.js              boot, frame loop, adaptive resolution, context loss
 tools/shot.mjs          headless Chrome screenshot harness (development only)
+tools/bench.mjs         headless frame-cost benchmark (development only)
 ```
 
 ## Development harness
@@ -308,19 +372,35 @@ another platform.
 
 ```sh
 # canvas only
-node tools/shot.mjs "http://127.0.0.1:8123/?v=96&quality=high&noauto&capture=1" shot.png 1200
+node tools/shot.mjs "http://127.0.0.1:8123/?v=106&quality=high&noauto&capture=1" shot.png 1200
 
 # full page, including the control panel
 $env:SHOT_PAGE="1"           # PowerShell
-node tools/shot.mjs "http://127.0.0.1:8123/?v=96" page.png 1200
+node tools/shot.mjs "http://127.0.0.1:8123/?v=106" page.png 1200
 ```
 
 Other environment variables: `SHOT_SIZE` (`1200,760`), `SHOT_EVAL` (JavaScript
 run before capture), `SHOT_EVAL_WAIT` (ms), `SHOT_EMULATE` (`390x780`, applies
 mobile emulation and reloads), `SHOT_DPR`.
 
-The version query string (`?v=96`) is only cache busting and can be omitted in
+The version query string (`?v=106`) is only cache busting and can be omitted in
 normal use.
+
+### Frame-cost benchmark
+
+`tools/bench.mjs` measures render cost without depending on the browser's
+animation-frame scheduling (headless Chrome throttles `requestAnimationFrame`,
+which makes frame-gap timing useless):
+
+```sh
+node tools/bench.mjs "http://127.0.0.1:8123/?capture=1" high 30
+$env:BENCH_LAYERS="2"; node tools/bench.mjs "http://127.0.0.1:8123/?capture=1" high 30
+```
+
+It sets the tier, disables auto camera and adaptive quality, then renders the
+pipeline N times and forces each frame with a 1×1 `readPixels` fence. Compare
+medians from the same machine and window size; the p95 spread is large on
+SwiftShader. `BENCH_LAYERS` overrides the layer count to isolate per-layer cost.
 
 ### Repeatable state captures
 
@@ -344,6 +424,28 @@ must not wait for smoothing. Automatic captures were taken at quiet, growth,
 expansion, recovery, high activity, alternate angles, all four quality tiers and
 a 390×780 mobile viewport.
 
+For a before/after comparison the model must not advance between the two runs,
+so freeze it completely: same phase, paused clock, fixed `simTime` (which is the
+shader's `uTime`), fixed camera, and a no-op weather update.
+
+```powershell
+$env:SHOT_EVAL=@'
+const A = window.__aurora, w = A.weather, c = A.camera;
+w._enter(2, 40); w.phaseT = 9; w.env = 0.95; w.surge = 0.9;
+w.activity = 0.95; w.activitySlow = 0.9; w.energy = 0.8; w.stored = 0.8;
+w.update = function () {};
+A.params.paused = true; A.state.simTime = 124; A.state.realTime = 124;
+c.setAuto(false); c.baseYaw = 0; c.yaw = 0; c.basePitch = 0.02; c.pitch = 0.02;
+c.velYaw = 0; c.velPitch = 0; c.spinYaw = 0; c.spinPitch = 0;
+'@
+$env:SHOT_EVAL_WAIT="1500"
+node tools/shot.mjs "http://127.0.0.1:8123/?capture=1&quality=high" after.png 3500
+```
+
+Run the same command against a checkout of the previous commit (`git worktree
+add ../aurora-base HEAD --detach`, served on another port) to get a true A/B with
+identical camera, weather and noise phase.
+
 ## Modelled vs artistic
 
 | Modelled / physically ordered | Artistic approximation |
@@ -355,6 +457,7 @@ a 390×780 mobile viewport.
 | Near-vertical sheets lean and meander like field-aligned curtains. | The sheets are Gaussian surfaces with artistic folds; no magnetic-field integration is performed. |
 | The oval contracts during a substorm. | It is represented by a small depth shift of the sheet stack, not a mapped auroral oval. |
 | Front-to-back absorption gives overlapping arcs depth. | Optical depth is a single scalar per layer. |
+| Arc gaps and the travelling wave are shared across the sheet stack, so arcs stay coherent with depth and with camera motion. | Gap spacing, travel speed and the activity dependence are chosen for appearance, not fitted to a mapped oval. |
 | The lake reflects the modelled sky through a reflected camera ray. | Ripple distortion, vertical stretch and brightness are stylised for the shot. |
 | Bloom and ACES produce a filmic image. | These are display transforms, not instrument response. |
 
@@ -365,6 +468,8 @@ a 390×780 mobile viewport.
 - No magnetohydrodynamics, particle tracing, ionospheric chemistry or
   radiative transfer is solved.
 - The camera is fixed at the origin; there is no terrain-scale fly-through.
+- Arc organisation is a procedural gap field, not a mapped auroral oval: the
+  spacing does not follow a real geomagnetic latitude or field-line geometry.
 - The lake reflection is screen-space and only contains the aurora buffer, not
   the stars or mountains.
 - The renderer favours a coherent, low-cost approximation over measured
