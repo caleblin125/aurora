@@ -8,6 +8,13 @@
    different depths, so a near arc hides parts of the arcs behind it and the
    layer stack reads as an actual volume with parallax and extinction.
 
+   The curtain is also organised at arc scale.  All sheets sample one gap
+   pattern on a reference plane, so they break into the same discrete arcs
+   with darker gaps instead of averaging back into a continuous wall, and the
+   gap pattern deepens with geomagnetic activity.  A slow wave travels along
+   each arc, so neighbouring filaments move together rather than each one
+   breathing in place.
+
    Instead of marching through each thin sheet (which aliases the fine ray
    structure), the shader solves for the camera ray's closest approach to the
    sheet, evaluates all curtain structure there once, and multiplies by the
@@ -19,9 +26,9 @@
    altitude and by the simulated precipitation energy.  The 557.7 nm green
    follows the fast activity signal; the 630.0 nm red upper layer follows a
    slower signal because the O(1D) state has a much longer radiative lifetime.
-   Nitrogen blue/violet appears where harder precipitation reaches the base of
-   the curtain.  These are approximations of the dominant lines, not a
-   radiative-transfer solution.
+   Nitrogen blue/violet is confined to the base of the column, where harder
+   precipitation actually reaches.  These are approximations of the dominant
+   lines, not a radiative-transfer solution.
    ------------------------------------------------------------------ */
 (function () {
   "use strict";
@@ -66,11 +73,13 @@ out vec4 fragColor;
 
 /* The dominant lines, expressed as approximate display-space colours.
    Oxygen green 557.7 and red 630.0 dominate; N2+ 427.8 and the N2 LBH
-   bands supply the blue/violet lower border. */
-const vec3 C_GREEN  = vec3(0.10, 1.00, 0.34);
-const vec3 C_RED    = vec3(1.00, 0.26, 0.30);
+   bands supply the blue/violet lower border.  The display values are pulled
+   slightly off the pure spectral colours: real aurora photographs show a
+   softer, less electric green and a salmon rather than a magenta red. */
+const vec3 C_GREEN  = vec3(0.16, 0.93, 0.42);
+const vec3 C_RED    = vec3(1.00, 0.32, 0.27);
 const vec3 C_BLUE   = vec3(0.16, 0.30, 1.00);
-const vec3 C_VIOLET = vec3(0.46, 0.22, 1.00);
+const vec3 C_VIOLET = vec3(0.44, 0.24, 1.00);
 
 /* Altitude profiles in slab units (v = 0 at 82 km, v = 1 at 252 km).
    The green layer is broad in the column but fades above ~200 km, the red
@@ -81,21 +90,23 @@ vec3 emission(float v, float ray, float energy, float slow, float bias) {
   float greenP = smoothstep(-0.05, 0.06, alt) * (1.0 - smoothstep(0.58, 1.18, alt));
   float redP   = smoothstep(0.95, 1.40, alt) * (1.0 - smoothstep(1.90, 2.55, alt));
   float blueP  = exp(-pow((alt - 0.015) / 0.070, 2.0));
-  float violP  = smoothstep(0.02, 0.18, alt) * (1.0 - smoothstep(0.46, 0.88, alt));
+  /* Violet belongs to the very base of the column, not the mid-altitude body. */
+  float violP  = smoothstep(0.01, 0.09, alt) * (1.0 - smoothstep(0.20, 0.42, alt));
 
   float greenW = 1.00;
   float redW   = 0.05 + 0.20 * slow;
-  float blueW  = 0.03 + 0.35 * energy;
-  float violW  = 0.03 + 0.28 * energy;
+  float blueW  = 0.02 + 0.26 * energy;
+  float violW  = 0.02 + 0.20 * energy;
 
   vec3 em = C_GREEN * (greenP * greenW)
           + C_RED   * (redP   * redW)
           + C_BLUE  * (blueP  * blueW)
           + C_VIOLET* (violP  * violW);
 
-  /* Bright filaments desaturate slightly, as exposed film does. */
+  /* Bright filaments desaturate a little, as exposed film does.  Kept low so
+     the cores stay green instead of burning to white. */
   float peak = max(max(em.r, em.g), em.b);
-  em = mix(em, vec3(0.88, 1.00, 0.94) * peak, ray * ray * 0.10);
+  em = mix(em, vec3(0.90, 1.00, 0.95) * peak, ray * ray * 0.06);
   return em;
 }
 
@@ -193,9 +204,13 @@ void main() {
          edge-on.  Their slope participates in the line integral below. */
       float w1 = p.x * 0.0082 + v * 2.6 + uTime * 0.055 * flow + fi * 1.7;
       float w2 = p.x * 0.0195 - v * 1.4 + uTime * 0.120 * flow + fi * 3.3;
+      /* A slow wave travelling along the arc keeps neighbouring filaments
+         moving together instead of each one breathing in place. */
+      float w3 = p.x * 0.00145 - uTime * 0.0035 * flow + fi * 2.2;
       float waveAmp = 0.35 + 0.65 * turb;
-      float wave = (sin(w1) * 11.0 + sin(w2) * 5.0) * waveAmp;
-      waveSlope = (cos(w1) * 11.0 * 2.6 + cos(w2) * 5.0 * -1.4)
+      float wave = (sin(w1) * 11.0 + sin(w2) * 5.0 + sin(w3) * 12.0) * waveAmp;
+      waveSlope = (cos(w1) * 11.0 * 2.6 + cos(w2) * 5.0 * -1.4
+                 + cos(w3) * 12.0 * 0.00145)
                 * waveAmp / uAltSpan;
 
       /* Arcs are not flat walls: the sheet recedes towards the frame edges
@@ -222,6 +237,26 @@ void main() {
     float warpB = (w.g - 0.5) * 2.0;
     float warpC = (w.b - 0.5) * 2.0;
     float warpD = (w.a - 0.5) * 2.0;
+
+    /* Arcs are coherent across the depth stack, so the gap pattern is sampled
+       on one reference plane instead of per-sheet depth: otherwise each
+       sheet's gaps fall in different places and average back into a wall.
+       At the sheet depth the frame spans under 1 Mm, so a 250-300 km
+       wavelength gives a handful of arcs rather than half of one. */
+    float arcX = rd.x * uBaseZ;
+    float arcBig = 0.5
+                 + 0.34 * sin(arcX * 0.0225 + uTime * 0.020 * flow + fi * 0.35)
+                 + 0.15 * sin(arcX * 0.0510 - uTime * 0.031 * flow + fi * 0.90);
+    float bands = smoothstep(0.30, 0.66, arcBig * 0.82 + (warpD * 0.5 + 0.5) * 0.18);
+    /* Quiet arcs are broad and fairly uniform; activity is what splits the
+       oval into discrete arcs, so the gaps deepen with the activity signal. */
+    float gapFloor = mix(0.62, 0.20, smoothstep(0.10, 0.85, uActivity));
+
+    /* Sheets fade in and out over several minutes, so the stack keeps
+       changing without adding more layers. */
+    float vis = 0.62 + 0.38 * smoothstep(
+      -0.6, 0.6, sin(uTime * 0.012 * flow + fi * 2.1) * 0.7 + 0.3
+    );
 
     float snake = v * (38.0 + 10.0 * fi)
                 + sin(v * 2.30 + p.x * 0.0022 + uTime * 0.045 * flow + fi * 1.9) * 22.0
@@ -261,25 +296,39 @@ void main() {
       ray *= 0.72 + 0.46 * smoothstep(0.28, 0.74, fil);
     }
 
-    /* ---- arc segments, lobes and large-scale envelope ---- */
+    /* ---- arc segments, lobes and large-scale envelope ----
+       One combined field instead of three multiplied smoothsteps: the old
+       version averaged out to a fairly even mid grey, which is why the curtain
+       read as a continuous wall.  A tighter threshold and a per-sheet phase
+       offset give each sheet its own arcs and gaps. */
     float arc = smoothstep(0.42, 0.80, d.r * 0.72 + (warpC * 0.5 + 0.5) * 0.28);
     float lobe = smoothstep(-0.30, 0.60, warpB * 0.80 + (d.b - 0.5) * 0.40);
-    float env = smoothstep(-0.38, 0.18, warpD);
-    env *= 0.55 + 0.45 * smoothstep(-0.45, 0.45, (d.a - 0.5) * 2.0 + fi * 0.30);
-    env *= 0.55 + 0.45 * smoothstep(-0.60, 0.25, warpC * 0.75 + 0.20);
+    float envField = warpD * 0.52
+                   + (d.a - 0.5) * 1.05
+                   + (warpC * 0.5 + 0.5) * 0.38
+                   + (fi - 1.5) * 0.075;
+    float env = smoothstep(-0.30, 0.34, envField);
+    env = mix(0.04, 1.0, env);
 
     /* ---- altitude profile ---- */
     float bottom = 0.030 + 0.014 * fi + 0.010 * (d.b - 0.5) + 0.016 * warpD
                  + 0.014 * warpA
+                 + (arcBig - 0.5) * 0.075
                  + 0.026 * sin(xw * 0.0105 + uTime * 0.070 * flow + fi * 1.7)
                  + 0.014 * sin(xw * 0.0247 + uTime * 0.130 * flow + fi * 4.3);
-    float topBase = 1.62 + 0.38 * (warpB * 0.5 + 0.5) + 0.12 * uSurge
-                  + 0.18 * sin(xw * 0.0016 + uTime * 0.021 * flow + fi * 2.1);
+    float topBase = 1.58 + 0.30 * (warpB * 0.5 + 0.5) + 0.12 * uSurge
+                  + 0.34 * sin(arcX * 0.0132 + uTime * 0.030 * flow + fi * 0.6)
+                  + 0.14 * sin(arcX * 0.0291 - uTime * 0.051 * flow + fi * 2.4);
     float topScale = 1.0 + 0.12 * fi;
     float bright = clamp(ray * 0.58 + r.a * 0.32 + d.b * 0.10, 0.0, 1.0);
-    float hTop = clamp(topBase * topScale * mix(0.86, 1.14, bright), 0.40, 2.32);
+    /* Arcs between the bright bands are shorter as well as fainter, so the
+       upper edge undulates instead of running level across the whole frame. */
+    float hTop = clamp(topBase * topScale * mix(0.86, 1.14, bright)
+                     * mix(0.82, 1.06, bands), 0.40, 2.32);
 
-    float prof = smoothstep(bottom, bottom + 0.050, v);
+    /* The base is a real edge, not a fade: emission starts over ~8 km and the
+       column thins upward. */
+    float prof = smoothstep(bottom, bottom + 0.030, v);
     prof *= 1.0 - smoothstep(hTop * 0.78, hTop, v);
     prof *= mix(1.0, 0.45, smoothstep(bottom, hTop * 0.85, v));
 
@@ -292,23 +341,36 @@ void main() {
     /* Patchy brightening along the curtain: rays fade in and out with altitude
        instead of running as one continuous vertical stripe. */
     float vmod = 0.42 + 0.58 * smoothstep(0.22, 0.78, w.b);
-    float shape = prof * env * (0.30 + 0.70 * env) * vmod;
-    float dens = pathSheet * shape * (0.14 + 0.86 * arc)
+    float shape = prof * env * (0.18 + 0.82 * env) * vmod;
+
+    /* A narrow rim of extra density just above the base draws the lower border
+       as a bright, broken line instead of letting the column dissolve into
+       upward flame tongues.  It reuses the arc, ray and envelope masks, so the
+       defined base costs no extra noise fetches. */
+    float foot = smoothstep(bottom - 0.006, bottom + 0.010, v)
+               * (1.0 - smoothstep(bottom + 0.016, bottom + 0.055, v));
+    foot *= smoothstep(0.24, 0.70, arc * 0.55 + rayLocal * 0.45);
+
+    float dens = pathSheet * (shape + foot * env * 0.38)
+               * (0.14 + 0.86 * arc)
                * (0.28 + 0.72 * lobe)
                * rayAmp;
 
-    dens *= sheetGain * detail;
+    dens *= sheetGain * detail * vis;
+    /* Broad gaps between arcs.  The floor keeps them dark but not black, so
+       the horizon still shows faint structure between bright bands. */
+    dens *= mix(gapFloor, 1.0, bands);
     if (dens <= 0.02) continue;
 
     /* Optically thin broad halo around the core: atmospheric diffusion and
        the unresolved part of the curtain.  It is not self-absorbed. */
     float wideWidth = width * 3.4 + 7.0;
     float pathWide = min(1.7724539 * wideWidth / max(abs(sRate), 0.06), 1200.0);
-    float broad = smoothstep(bottom - 0.04, bottom + 0.12, v)
+    float broad = smoothstep(bottom + 0.004, bottom + 0.070, v)
                 * (1.0 - smoothstep(hTop * 0.82, hTop * 1.25, v));
     float gDen = pathWide * broad * (0.18 + 0.82 * env)
                * (0.30 + 0.70 * arc) * (0.45 + 0.55 * lobe)
-               * (0.25 + 0.75 * ray) * 0.030;
+               * (0.25 + 0.75 * ray) * vis * mix(0.55, 1.0, bands) * 0.030;
 
     vec3 c = emission(v, rayLocal, uEnergy, uActivitySlow, uColorBias);
     vec3 gc = emission(v, 0.55, uEnergy, uActivitySlow, uColorBias);
